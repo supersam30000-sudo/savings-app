@@ -320,9 +320,17 @@ function plural(n, f) { const a = Math.abs(n) % 100, b = a % 10; return a > 10 &
 const PAY_WORDS = ["платёж", "платежа", "платежей"];
 const PER = { month: "в месяц", week: "в неделю" };
 const UNIT = { month: ["месяц", "месяца", "месяцев"], week: ["неделю", "недели", "недель"] };
-const dLong = d => d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-const dShort = d => d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-const dMonth = d => d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+/* Даты пишем сами, а не встроенной функцией: она даёт месяц только в одном падеже и добавляет «г.»,
+   из-за чего получалось «в ноябрь 2026 г..». Здесь у каждого месяца три падежа. */
+const M_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+const M_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const M_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"];
+const dLong = d => `${d.getDate()} ${M_GEN[d.getMonth()]} ${d.getFullYear()}`;                 // 10 мая 2027
+const dDay = d => `${d.getDate()} ${M_GEN[d.getMonth()]}`;                                      // 10 мая
+const dShort = d => (d.getFullYear() === new Date().getFullYear() ? dDay(d) : dLong(d));        // год — только если не текущий
+const dInMonth = d => `${M_PREP[d.getMonth()]} ${d.getFullYear()} года`;                        // (в) ноябре 2026 года
+const monthName = d => M_NOM[d.getMonth()];                                                     // (за) ноябрь
+const dTime = d => `${dDay(d)}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 // Экранирует текст и для HTML, и для атрибутов: кавычки в названии больше не обрезают его в форме
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = s => String(s).replace(/[&<>"']/g, c => ESC[c]);
@@ -522,13 +530,13 @@ function dueDate(b) {
 const isPaid = b => !!(b.paid && b.paid[monthKey(today0())]);
 const DAYS_W = ["день", "дня", "дней"];
 function dueLabel(b) {
-  if (isPaid(b)) return { t: "Оплачено " + new Date(b.paid[monthKey(today0())]).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), c: "ok" };
+  if (isPaid(b)) return { t: "Оплачено " + dDay(new Date(b.paid[monthKey(today0())])), c: "ok" };
   const diff = Math.round((dueDate(b) - today0()) / DAY);
   if (diff < 0) return { t: `Просрочено на ${-diff} ${plural(-diff, DAYS_W)}`, c: "bad" };
   if (diff === 0) return { t: "Оплатить сегодня", c: "warn" };
   if (diff === 1) return { t: "Оплатить завтра", c: "warn" };
   if (diff <= 3) return { t: `Через ${diff} ${plural(diff, DAYS_W)}`, c: "warn" };
-  return { t: "До " + dueDate(b).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }), c: "" };
+  return { t: "До " + dDay(dueDate(b)), c: "" };
 }
 function billRow(b) {
   const paid = isPaid(b), lb = dueLabel(b);
@@ -542,7 +550,7 @@ function billRow(b) {
 }
 function billsHTML() {
   const list = BL.ids.map(id => BL.items[id]);
-  const month = today0().toLocaleDateString("ru-RU", { month: "long" });
+  const month = monthName(today0());
   if (!list.length) {
     return `<div class="empty"><div style="font-size:44px">🧾</div>
       <div class="name">Обязательных трат пока нет</div>
@@ -581,7 +589,7 @@ async function togglePaid(id) {
   if (wasPaid) { haptic("tap"); return; }
   const all = BL.ids.every(x => isPaid(BL.items[x]));
   haptic("success");
-  if (all && BL.ids.length > 1) toast("🎉", "Всё оплачено", "Обязательные траты за " + today0().toLocaleDateString("ru-RU", { month: "long" }) + " закрыты");
+  if (all && BL.ids.length > 1) toast("🎉", "Всё оплачено", "Обязательные траты за " + monthName(today0()) + " закрыты");
   else toast("✓", "Оплачено", `${b.name}, ${money(b.amount)}`);
 }
 
@@ -697,7 +705,7 @@ function detailHTML(id) {
   } else {
     const pace = monthlyPace(g);
     h += `<div class="group-title">План</div><div class="group">
-      ${pace ? `<div class="cell insight">При вашем темпе около ${money(Math.round(pace / 100) * 100)} в месяц цель будет достигнута примерно в ${dMonth(new Date(Date.now() + (left / pace) * 30.44 * DAY))}.</div>` : ""}
+      ${pace ? `<div class="cell insight">При вашем темпе около ${money(Math.round(pace / 100) * 100)} в месяц цель будет достигнута примерно в ${dInMonth(new Date(Date.now() + (left / pace) * 30.44 * DAY))}.</div>` : ""}
       <button class="cell link" data-act="edit">Добавить срок и рассчитать план</button></div>`;
   }
 
@@ -721,7 +729,7 @@ function detailHTML(id) {
 
   // История
   h += `<div class="group-title">История</div><div class="group">` + (g.ops.length
-    ? g.ops.slice().reverse().map(([a, t]) => `<div class="cell"><span class="grow sub" style="margin:0">${new Date(t).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+    ? g.ops.slice().reverse().map(([a, t]) => `<div class="cell"><span class="grow sub" style="margin:0">${dTime(new Date(t))}</span>
         <span class="num ${a > 0 ? "ok" : "bad"}">${a > 0 ? "+" : "−"}${money(Math.abs(a))}</span></div>`).join("")
     : `<div class="cell sub" style="margin:0">Операций пока нет</div>`) + `</div>`;
   if (g.ops.length >= MAX_OPS) h += `<p class="group-foot">Показаны последние ${MAX_OPS} операций.</p>`;
