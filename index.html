@@ -2,19 +2,18 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Копилка</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ===== Цвета в стиле iOS: светлая и тёмная тема ===== */
 :root {
   --bg:#F2F2F7; --card:#FFFFFF; --text:#000000;
-  --sec:rgba(60,60,67,.6); --ter:rgba(60,60,67,.3); --sep:rgba(60,60,67,.18);
+  --sec:rgba(60,60,67,.64); --ter:rgba(60,60,67,.3); --sep:rgba(60,60,67,.18);
   --fill:rgba(118,118,128,.12); --track:rgba(118,118,128,.16); --seg-on:#FFFFFF;
   --accent:#007AFF; --green:#34C759; --red:#FF3B30; --orange:#FF9500;
+  /* Яркие зелёный и оранжевый плохо читаются мелким текстом на белом, для надписей — тёмные оттенки */
+  --green-t:#248A3D; --orange-t:#C93400; --red-t:#D70015;
   --tint:rgba(0,122,255,.12);
   color-scheme: light;
 }
@@ -23,13 +22,20 @@
   --sec:rgba(235,235,245,.6); --ter:rgba(235,235,245,.3); --sep:rgba(84,84,88,.6);
   --fill:rgba(118,118,128,.24); --track:rgba(118,118,128,.3); --seg-on:#636366;
   --accent:#0A84FF; --green:#30D158; --red:#FF453A; --orange:#FF9F0A;
+  --green-t:#30D158; --orange-t:#FF9F0A; --red-t:#FF453A;
   --tint:rgba(10,132,255,.18);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
 html, body { margin:0; background:var(--bg); color:var(--text); }
+/* Запрет масштабирования: страницу нельзя увеличить двумя пальцами или двойным нажатием,
+   прокрутка при этом работает как обычно */
+html { touch-action:pan-x pan-y; overflow-x:hidden; }
+body { overflow-x:hidden; }
 body {
-  font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif;
+  /* Системный шрифт: San Francisco на iPhone, Roboto на Android. Ничего не скачивается из интернета. */
+  font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust:100%;
   font-size:17px; line-height:1.3; letter-spacing:-.01em;
   -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
 }
@@ -42,7 +48,7 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .large-title { font-size:34px; font-weight:700; letter-spacing:.01em; margin:8px 0 12px; }
 .hero-total { margin:0 0 4px; font-size:15px; color:var(--sec); }
 /* Шапка главного экрана: своя для каждой вкладки */
-.summary { margin:0 0 18px; min-height:96px; }
+.summary { margin:0 0 18px; }
 .summary .cap { font-size:15px; color:var(--sec); }
 .summary .total { font-size:30px; font-weight:700; letter-spacing:-.02em; margin-top:1px; }
 .summary .hint { font-size:15px; color:var(--sec); margin-top:4px; }
@@ -74,7 +80,6 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .chev { color:var(--ter); font-size:20px; line-height:1; }
 .name { font-weight:600; overflow-wrap:anywhere; }
 .sub { font-size:15px; color:var(--sec); margin-top:2px; }
-.ok { color:var(--green); } .warn { color:var(--orange); } .bad { color:var(--red); }
 
 /* Кольцо прогресса */
 .ring-wrap { position:relative; flex:none; display:grid; place-items:center; }
@@ -84,15 +89,20 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 
 .empty { text-align:center; padding:40px 24px; color:var(--sec); }
 .empty .name { color:var(--text); font-size:20px; margin:16px 0 6px; }
+.empty .ring-wrap { margin:0 auto; }
 
 /* Кнопки */
-.btn { display:block; width:100%; height:50px; border-radius:12px; font-size:17px; font-weight:600; }
+.btn { display:block; width:100%; min-height:50px; border-radius:12px; font-size:17px; font-weight:600; }
+.btn:active { opacity:.7; }
+button.cell:active, .bill-cell .open:active { background:var(--fill); }
+.nav button:active { opacity:.5; }
 .btn.primary { background:var(--accent); color:#fff; }
+.fab { box-shadow:0 6px 20px rgba(0,122,255,.28); }
 .btn.tinted { background:var(--tint); color:var(--accent); }
-.btn.danger { color:var(--red); background:var(--card); }
+.btn.danger { color:var(--red-t); background:var(--card); }
 .btn-row { display:flex; gap:10px; }
 .btn-row .btn { flex:1; }
-.fab { position:fixed; left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom,0px)); max-width:568px; margin:0 auto; }
+.fab { position:fixed; left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom,0px)); max-width:568px; margin:0 auto; width:auto; }
 .link { color:var(--accent); }
 
 /* Шторка */
@@ -115,7 +125,8 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 
 .detail-hero { display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 24px; }
 .detail-hero h2 { margin:14px 0 4px; font-size:24px; font-weight:700; overflow-wrap:anywhere; }
-.detail-hero .big { font-size:17px; color:var(--sec); }
+.detail-hero .big { font-size:15px; color:var(--sec); margin-top:1px; }
+.detail-hero .amount-big { font-size:28px; font-weight:700; letter-spacing:-.02em; color:var(--text); margin-top:14px; }
 .pct { font-size:28px; font-weight:700; letter-spacing:-.02em; }
 .pct-small { font-size:11px; font-weight:600; color:var(--sec); }
 
@@ -123,11 +134,12 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .amount { width:100%; border:0; background:transparent; font-size:34px; font-weight:600; text-align:center; padding:14px 0 6px; outline:none; }
 .amount::placeholder { color:var(--ter); }
 .chips { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:4px 16px 14px; }
-.chip { padding:7px 14px; border-radius:16px; background:var(--fill); font-size:15px; font-weight:500; }
+.chip { min-height:36px; padding:7px 14px; border-radius:18px; background:var(--fill); font-size:15px; font-weight:500; }
+.chip:active { background:var(--tint); }
 .cell input.right { flex:1; min-width:0; border:0; background:transparent; text-align:right; outline:none; padding:0; }
 .cell input.right::placeholder { color:var(--ter); }
 .cell input[type="date"] { flex:none; border:0; background:var(--fill); border-radius:8px; padding:6px 10px; outline:none; }
-.err { color:var(--red); font-size:15px; min-height:20px; text-align:center; padding:0 16px 10px; }
+.err { color:var(--red-t); font-size:15px; min-height:20px; text-align:center; padding:0 16px 10px; }
 .emoji-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; padding:12px; }
 .emoji-grid button { font-size:26px; height:48px; border-radius:10px; }
 .emoji-grid button.on { background:var(--tint); box-shadow:inset 0 0 0 2px var(--accent); }
@@ -151,19 +163,22 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .badge.off .e { background:var(--fill); filter:grayscale(1); opacity:.35; }
 .badge .t { font-size:11px; line-height:1.2; font-weight:500; }
 .badge.off .t { color:var(--ter); }
-.streak { font-size:13px; font-weight:600; color:var(--orange); white-space:nowrap; }
+.streak { font-size:13px; font-weight:600; color:var(--orange-t); white-space:nowrap; }
 
 /* Обязательные траты: кружок отметки как в «Напоминаниях» */
-.check { width:26px; height:26px; flex:none; border-radius:50%; border:2px solid var(--ter); display:grid; place-items:center; color:#fff; font-size:14px; font-weight:700; transition:background .15s, border-color .15s; }
-.check.on { background:var(--green); border-color:var(--green); }
+/* Сам кружок 26px, но область нажатия 44px — по нему легко попасть пальцем */
+.check { width:44px; height:44px; margin:-9px -6px -9px -9px; flex:none; display:grid; place-items:center; }
+.check i { width:26px; height:26px; border-radius:50%; border:2px solid var(--ter); display:grid; place-items:center;
+  color:#fff; font-size:14px; font-weight:700; font-style:normal; transition:background .15s, border-color .15s; }
+.check.on i { background:var(--green); border-color:var(--green); }
 .bill-cell .open { flex:1; min-width:0; display:flex; align-items:center; gap:10px; text-align:left; }
 .bill-cell .em { font-size:22px; width:28px; text-align:center; flex:none; }
 .bill-cell.paid .name, .bill-cell.paid .amt { color:var(--sec); }
 .amt { font-weight:600; white-space:nowrap; }
 .sum-card { display:flex; align-items:center; gap:16px; padding:16px; }
 .sum-card .big { font-size:22px; font-weight:700; letter-spacing:-.01em; }
-.days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; padding:10px 12px 12px; }
-.days button { height:38px; border-radius:50%; font-size:15px; font-variant-numeric:tabular-nums; }
+.days { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:8px 10px 10px; justify-items:center; }
+.days button { width:42px; height:42px; border-radius:50%; font-size:16px; font-variant-numeric:tabular-nums; }
 .days button.on { background:var(--accent); color:#fff; font-weight:600; }
 
 /* Всплывающее поздравление */
@@ -194,11 +209,17 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 @media (prefers-reduced-motion:reduce) { .snack { transition:opacity .2s; transform:none; } }
 
 @media (prefers-reduced-motion:reduce) { .toast { transition:opacity .2s; transform:translate(-50%,-50%); } }
+/* Цвета состояний стоят последними: так «Оплатить сегодня» или «+1 200 ₽» окрашиваются даже внутри серых подписей */
+.ok, .cell .val.ok { color:var(--green-t); }
+.warn, .cell .val.warn { color:var(--orange-t); }
+.bad, .cell .val.bad { color:var(--red-t); }
+body.locked { overflow:hidden; }
+.sheet { overscroll-behavior:contain; outline:none; }
 </style>
 </head>
 <body>
 <main class="page" id="app"></main>
-<div class="sheet-wrap" id="wrap"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="sheet-wrap" id="wrap"><div class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="snack" id="snack" role="status" aria-live="polite"></div>
 
@@ -212,7 +233,13 @@ function applyTheme() {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   if (ver("6.9")) { try { const c = dark ? "#000000" : "#F2F2F7"; tg.setHeaderColor(c); tg.setBackgroundColor(c); } catch (e) {} }
 }
-if (inTG) { tg.ready(); tg.expand(); tg.onEvent("themeChanged", applyTheme); }
+if (inTG) {
+  tg.ready(); tg.expand(); tg.onEvent("themeChanged", applyTheme);
+  if (ver("7.7")) { try { tg.disableVerticalSwipes(); } catch (e) {} }
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.stack.length) back(); });
+// В браузере iPhone жест увеличения двумя пальцами отменяется только так
+["gesturestart", "gesturechange"].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 applyTheme();
 const haptic = t => { if (inTG && tg.HapticFeedback) { t === "tap" ? tg.HapticFeedback.selectionChanged() : tg.HapticFeedback.notificationOccurred(t); } };
 const alertMsg = t => (inTG && tg.showAlert ? tg.showAlert(t) : alert(t));
@@ -337,7 +364,7 @@ function monthlyPace(g) {
 /* ================== Форматирование ================== */
 function money(k) {
   const r = k / 100;
-  return r.toLocaleString("ru-RU", { minimumFractionDigits: k % 100 ? 2 : 0, maximumFractionDigits: 2 }) + " ₽";
+  return r.toLocaleString("ru-RU", { minimumFractionDigits: k % 100 ? 2 : 0, maximumFractionDigits: 2 }) + "\u00A0₽";  // неразрывный пробел
 }
 function parseAmount(t) {
   const v = Number(String(t).replace(/\s/g, "").replace(",", "."));
@@ -364,14 +391,14 @@ const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;
 const esc = s => String(s).replace(/[&<>"']/g, c => ESC[c]);
 const pct = g => (g.target ? Math.min(g.balance / g.target, 1) : 0);
 
-function ring(size, p, inner) {
+function ring(size, p, inner, from) {
   const sw = Math.max(5, Math.round(size * 0.11)), r = (size - sw) / 2, c = 2 * Math.PI * r, h = size / 2;
   const col = p >= 1 ? "var(--green)" : "var(--accent)";
   return `<div class="ring-wrap" style="width:${size}px;height:${size}px">
     <svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
       <circle cx="${h}" cy="${h}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
       <circle class="p" cx="${h}" cy="${h}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}"
-        stroke-linecap="${p > 0 ? "round" : "butt"}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}"
+        stroke-linecap="${p > 0 ? "round" : "butt"}" stroke-dasharray="${c}" style="stroke-dashoffset:${c * (1 - (from == null ? p : from))}" ${from == null ? "" : `data-to="${c * (1 - p)}"`}
         transform="rotate(-90 ${h} ${h})"/>
     </svg><div class="inner">${inner}</div></div>`;
 }
@@ -381,6 +408,7 @@ const S = { ids: [], goals: {}, view: "goals", stack: [], form: null, bform: nul
   status: "loading",                 // loading | ready | error
   tab: "overview",                   // вкладка экрана цели: overview | plan | history
   undo: null,                        // последняя операция, которую можно отменить
+  ringFrom: 0,                       // с какого значения анимировать большое кольцо
   lost: { ids: [], billIds: [] } };  // ключи, которые не прочитались: не теряем их при сохранении списков
 // Защита от двойного нажатия: пока идёт сохранение, повторное действие игнорируется
 let busy = false;
@@ -601,7 +629,7 @@ function dueLabel(b) {
 function billRow(b) {
   const paid = isPaid(b), lb = dueLabel(b);
   return `<div class="cell bill-cell ${paid ? "paid" : ""}">
-    <button class="check ${paid ? "on" : ""}" data-act="pay" data-id="${b.id}" aria-label="${paid ? "Снять отметку" : "Отметить оплату"}: ${esc(b.name)}">${paid ? "✓" : ""}</button>
+    <button class="check ${paid ? "on" : ""}" data-act="pay" data-id="${b.id}" role="checkbox" aria-checked="${paid}" aria-label="Оплачено: ${esc(b.name)}"><i>${paid ? "✓" : ""}</i></button>
     <button class="open" data-act="editBill" data-id="${b.id}">
       <span class="em">${b.emoji}</span>
       <span class="grow"><span class="name" style="display:block">${esc(b.name)}</span><span class="sub ${lb.c}" style="display:block">${lb.t}</span></span>
@@ -665,17 +693,26 @@ function openBillForm(id) {
               : { id: null, emoji: "🏠", name: "", amount: "", day: Math.min(today0().getDate(), 28) };
   push("bill");
 }
+const dayTitle = d => `День оплаты: ${d}-е число каждого месяца`;
+const dayFoot = d => (d > 28 ? `В месяцах, где нет ${d}-го числа, срок переносится на последний день месяца.` : "");
+// Переключает выделение в группе кнопок без перерисовки всей формы
+function selectIn(btn) {
+  btn.parentNode.querySelectorAll("button").forEach(b => {
+    b.classList.toggle("on", b === btn);
+    if (b.hasAttribute("aria-pressed")) b.setAttribute("aria-pressed", b === btn);
+  });
+}
 function billFormHTML() {
   const f = S.bform;
   return `<div class="nav"><button data-act="back">Отмена</button><span class="t">${f.id ? "Изменить трату" : "Новая трата"}</span><button class="bold" data-act="saveBill">${f.id ? "Сохранить" : "Добавить"}</button></div>
-    <div class="group" style="margin-top:8px"><div class="emoji-grid">${BILL_EMOJI.map(e => `<button data-act="bemoji" data-v="${e}" class="${e === f.emoji ? "on" : ""}" aria-label="Значок ${e}">${e}</button>`).join("")}</div></div>
+    <div class="group" style="margin-top:8px"><div class="emoji-grid">${BILL_EMOJI.map(e => `<button data-act="bemoji" data-v="${e}" class="${e === f.emoji ? "on" : ""}" aria-pressed="${e === f.emoji}" aria-label="Значок ${e}">${e}</button>`).join("")}</div></div>
     <div class="group">
       <label class="cell"><span>Название</span><input class="right" data-bf="name" maxlength="40" value="${esc(f.name)}" placeholder="Например, аренда"></label>
       <label class="cell"><span>Сумма</span><input class="right num" data-bf="amount" inputmode="decimal" value="${esc(f.amount)}" placeholder="30 000"><span class="val">₽</span></label>
     </div>
-    <div class="group-title">День оплаты: ${f.day}-е число каждого месяца</div>
-    <div class="group"><div class="days">${Array.from({ length: 31 }, (_, i) => i + 1).map(d => `<button data-act="bday" data-v="${d}" class="${d === f.day ? "on" : ""}">${d}</button>`).join("")}</div></div>
-    ${f.day > 28 ? `<p class="group-foot">В месяцах, где нет ${f.day}-го числа, срок переносится на последний день месяца.</p>` : ""}
+    <div class="group-title" id="dayTitle">${dayTitle(f.day)}</div>
+    <div class="group"><div class="days">${Array.from({ length: 31 }, (_, i) => i + 1).map(d => `<button data-act="bday" data-v="${d}" class="${d === f.day ? "on" : ""}" aria-pressed="${d === f.day}">${d}</button>`).join("")}</div></div>
+    <p class="group-foot" id="dayFoot" style="margin-top:-20px">${dayFoot(f.day)}</p>
     <div class="err" id="berr"></div>
     ${f.id ? `<button class="btn danger" data-act="delBill">Удалить трату</button>` : ""}`;
 }
@@ -706,22 +743,30 @@ async function saveBillForm() {
 const wrap = document.getElementById("wrap"), sheet = document.getElementById("sheet");
 function push(kind, id) {
   S.stack.push({ kind, id });
-  if (kind === "detail") { S.tab = "overview"; S.showAll = false; }
+  if (kind === "detail") { S.tab = "overview"; S.showAll = false; S.ringFrom = 0; }
   showTop(true);
 }
 function showTop(scrollTop) {
   const top = S.stack[S.stack.length - 1];
   if (!top) {
     wrap.classList.remove("open");
+    document.body.classList.remove("locked");
     if (ver("6.1")) tg.BackButton.hide();
     renderMain();
     return;
   }
   sheet.innerHTML = `<div class="grabber"></div><div class="sheet-in">${top.kind === "detail" ? detailHTML(top.id) : top.kind === "bill" ? billFormHTML() : formHTML()}</div>`;
   wrap.classList.add("open");
-  if (scrollTop) sheet.scrollTop = 0;
+  document.body.classList.add("locked");          // главный экран под шторкой не прокручивается
+  if (scrollTop) { sheet.scrollTop = 0; if (sheet.focus) sheet.focus({ preventScroll: true }); }
   if (ver("6.1")) tg.BackButton.show();
   if (top.kind === "form") updatePreview();
+  if (top.kind === "detail") {
+    // кольцо стартует с прошлого значения и плавно дорастает до нового
+    const c = sheet.querySelector && sheet.querySelector("circle[data-to]");
+    S.ringFrom = pct(S.goals[top.id]);
+    if (c) requestAnimationFrame(() => requestAnimationFrame(() => { c.style.strokeDashoffset = c.dataset.to; }));
+  }
 }
 function back() { S.stack.pop(); showTop(true); }
 if (inTG && tg.BackButton) tg.BackButton.onClick(back);
@@ -732,8 +777,8 @@ function detailHTML(id) {
   const g = S.goals[id], p = pct(g);
   const tabs = [["overview", "Обзор"], ["plan", "План"], ["history", "История"]];
   return `<div class="nav"><button data-act="edit">Изменить</button><span class="t">${g.emoji} ${esc(g.name)}</span><button class="bold" data-act="close">Готово</button></div>
-    <div class="detail-hero">${ring(150, p, `<div><div class="pct num">${Math.floor(p * 100)}%</div><div class="pct-small">накоплено</div></div>`)}
-      <div class="big num" style="margin-top:14px;color:var(--text);font-size:24px;font-weight:700">${money(g.balance)}</div>
+    <div class="detail-hero">${ring(150, p, `<div><div class="pct num">${Math.floor(p * 100)}%</div><div class="pct-small">накоплено</div></div>`, S.ringFrom)}
+      <div class="amount-big num">${money(g.balance)}</div>
       <div class="big num">из ${money(g.target)}</div></div>
     <div class="seg" role="tablist">${tabs.map(([v, t]) => `<button role="tab" aria-selected="${v === S.tab}" data-act="tab" data-v="${v}" class="${v === S.tab ? "on" : ""}">${t}</button>`).join("")}</div>
     ${S.tab === "plan" ? planTab(g) : S.tab === "history" ? historyTab(g) : overviewTab(g)}`;
@@ -801,7 +846,7 @@ function planTab(g) {
       <div class="cell"><span class="grow">Срок</span><span class="val">${dLong(parseDate(g.deadline))}</span></div>
       <div class="cell"><span class="grow">Осталось</span><span class="val num">${n} ${plural(n, PAY_WORDS)}</span></div>
       ${g.rate ? `<div class="cell"><span class="grow">Ставка</span><span class="val num">${String(g.rate).replace(".", ",")}% годовых</span></div>
-      <div class="cell"><span class="grow">Принесут проценты</span><span class="val num">+${money(interest)}</span></div>` : ""}</div>`;
+      <div class="cell"><span class="grow">Принесут проценты</span><span class="val num ok">+${money(interest)}</span></div>` : ""}</div>`;
     if (planPay) {
       const shown = S.showAll ? rows : rows.slice(0, 6);
       h += `<div class="group-title">График платежей</div><div class="group">` +
@@ -841,7 +886,7 @@ function openForm(id) {
 function formHTML() {
   const f = S.form, tomorrow = toISO(new Date(today0().getTime() + DAY));
   return `<div class="nav"><button data-act="back">Отмена</button><span class="t">${f.id ? "Изменить цель" : "Новая цель"}</span><button class="bold" data-act="save">${f.id ? "Сохранить" : "Создать"}</button></div>
-    <div class="group" style="margin-top:8px"><div class="emoji-grid">${EMOJI.map(e => `<button data-act="emoji" data-v="${e}" class="${e === f.emoji ? "on" : ""}" aria-label="Значок ${e}">${e}</button>`).join("")}</div></div>
+    <div class="group" style="margin-top:8px"><div class="emoji-grid">${EMOJI.map(e => `<button data-act="emoji" data-v="${e}" class="${e === f.emoji ? "on" : ""}" aria-pressed="${e === f.emoji}" aria-label="Значок ${e}">${e}</button>`).join("")}</div></div>
     <div class="group">
       <label class="cell"><span>Название</span><input class="right" data-f="name" maxlength="40" value="${esc(f.name)}" placeholder="Например, ноутбук"></label>
       <label class="cell"><span>Сумма цели</span><input class="right num" data-f="target" inputmode="decimal" value="${esc(f.target)}" placeholder="80 000"><span class="val">₽</span></label>
@@ -965,8 +1010,14 @@ document.addEventListener("click", async e => {
     case "newBill": openBillForm(null); break;
     case "editBill": openBillForm(t.dataset.id); break;
     case "pay": once(() => togglePaid(t.dataset.id)); break;
-    case "bemoji": S.bform.emoji = t.dataset.v; haptic("tap"); showTop(false); break;
-    case "bday": S.bform.day = Number(t.dataset.v); haptic("tap"); showTop(false); break;
+    case "bemoji": S.bform.emoji = t.dataset.v; selectIn(t); haptic("tap"); break;
+    case "bday": {
+      const d = S.bform.day = Number(t.dataset.v);
+      selectIn(t);
+      document.getElementById("dayTitle").textContent = dayTitle(d);
+      document.getElementById("dayFoot").textContent = dayFoot(d);
+      haptic("tap"); break;
+    }
     case "saveBill": once(saveBillForm); break;
     case "delBill": once(async () => {
       const b = BL.items[S.bform.id];
@@ -988,8 +1039,8 @@ document.addEventListener("click", async e => {
     case "dep": once(() => operate(1)); break;
     case "wd": once(() => operate(-1)); break;
     case "all": S.showAll = !S.showAll; showTop(false); break;
-    case "emoji": S.form.emoji = t.dataset.v; haptic("tap"); showTop(false); break;
-    case "freq": S.form.freq = t.dataset.v; haptic("tap"); showTop(false); break;
+    case "emoji": S.form.emoji = t.dataset.v; selectIn(t); haptic("tap"); break;
+    case "freq": S.form.freq = t.dataset.v; selectIn(t); updatePreview(); haptic("tap"); break;
     case "save": once(saveForm); break;
     case "retry": load(); break;
     case "del": once(async () => {
