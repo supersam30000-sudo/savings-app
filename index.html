@@ -95,8 +95,9 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .sheet-in { max-width:600px; margin:0 auto; padding:0 16px calc(40px + env(safe-area-inset-bottom,0px)); }
 .grabber { width:36px; height:5px; border-radius:3px; background:var(--ter); margin:6px auto 0; }
 .nav { display:flex; align-items:center; justify-content:space-between; height:48px; position:sticky; top:0; background:var(--bg); z-index:2; }
-.nav .t { font-weight:600; position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; }
-.nav button { color:var(--accent); padding:8px 0; }
+.nav .t { flex:1; min-width:0; text-align:center; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nav button { color:var(--accent); padding:8px 0; min-width:84px; min-height:44px; }
+.nav button:first-child { text-align:left; } .nav button:last-child { text-align:right; }
 .nav button.bold { font-weight:600; }
 
 .detail-hero { display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 24px; }
@@ -166,6 +167,19 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .toast .e { font-size:52px; line-height:1; }
 .toast .t { font-weight:700; font-size:18px; margin-top:10px; }
 .toast .s { font-size:14px; color:var(--sec); margin-top:3px; }
+/* Полоска внизу после операции, с кнопкой «Отменить» */
+:root { --bar:#1C1C1E; } :root[data-theme="dark"] { --bar:#3A3A3C; }
+.snack {
+  position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom,0px)); z-index:31; max-width:576px; margin:0 auto;
+  display:flex; align-items:center; gap:12px; background:var(--bar); color:#fff; border-radius:14px; padding:6px 6px 6px 16px; min-height:52px;
+  font-size:15px; box-shadow:0 8px 28px rgba(0,0,0,.28); opacity:0; transform:translateY(16px); pointer-events:none;
+  transition:opacity .2s, transform .25s cubic-bezier(.2,.8,.2,1);
+}
+.snack.show { opacity:1; transform:none; pointer-events:auto; }
+.snack span { flex:1; min-width:0; }
+.snack button { color:#64B5FF; font-weight:600; min-height:40px; padding:0 12px; }
+@media (prefers-reduced-motion:reduce) { .snack { transition:opacity .2s; transform:none; } }
+
 @media (prefers-reduced-motion:reduce) { .toast { transition:opacity .2s; transform:translate(-50%,-50%); } }
 </style>
 </head>
@@ -173,6 +187,7 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 <main class="page" id="app"></main>
 <div class="sheet-wrap" id="wrap"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="snack" id="snack" role="status" aria-live="polite"></div>
 
 <script>
 /* ================== Telegram и тема ================== */
@@ -351,6 +366,8 @@ function ring(size, p, inner) {
 /* ================== Данные ================== */
 const S = { ids: [], goals: {}, view: "goals", stack: [], form: null, bform: null, showAll: false,
   status: "loading",                 // loading | ready | error
+  tab: "overview",                   // вкладка экрана цели: overview | plan | history
+  undo: null,                        // последняя операция, которую можно отменить
   lost: { ids: [], billIds: [] } };  // ключи, которые не прочитались: не теряем их при сохранении списков
 // Защита от двойного нажатия: пока идёт сохранение, повторное действие игнорируется
 let busy = false;
@@ -418,6 +435,16 @@ function toast(e, t, s) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
 }
+
+let snackTimer;
+function snack(text, action) {
+  const el = document.getElementById("snack");
+  el.innerHTML = `<span>${esc(text)}</span>${action ? `<button data-act="${action.act}">${action.label}</button>` : ""}`;
+  el.classList.add("show");
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(hideSnack, action ? 6000 : 2600);
+}
+function hideSnack() { document.getElementById("snack").classList.remove("show"); }
 
 async function load() {
   S.status = "loading"; renderMain();
@@ -639,7 +666,11 @@ async function saveBillForm() {
 
 /* ================== Шторки ================== */
 const wrap = document.getElementById("wrap"), sheet = document.getElementById("sheet");
-function push(kind, id) { S.stack.push({ kind, id }); S.showAll = false; showTop(true); }
+function push(kind, id) {
+  S.stack.push({ kind, id });
+  if (kind === "detail") { S.tab = "overview"; S.showAll = false; }
+  showTop(true);
+}
 function showTop(scrollTop) {
   const top = S.stack[S.stack.length - 1];
   if (!top) {
@@ -658,25 +689,68 @@ function back() { S.stack.pop(); showTop(true); }
 if (inTG && tg.BackButton) tg.BackButton.onClick(back);
 wrap.addEventListener("click", e => { if (e.target === wrap) back(); });
 
-/* ----- Экран цели ----- */
+/* ----- Экран цели: вкладки «Обзор», «План», «История» ----- */
 function detailHTML(id) {
-  const g = S.goals[id], p = pct(g), left = Math.max(g.target - g.balance, 0), n = paymentsLeft(g), r = perRate(g);
-  let h = `<div class="nav"><span></span><span class="t">${g.emoji}</span><button class="bold" data-act="close">Готово</button></div>
+  const g = S.goals[id], p = pct(g);
+  const tabs = [["overview", "Обзор"], ["plan", "План"], ["history", "История"]];
+  return `<div class="nav"><button data-act="edit">Изменить</button><span class="t">${g.emoji} ${esc(g.name)}</span><button class="bold" data-act="close">Готово</button></div>
     <div class="detail-hero">${ring(150, p, `<div><div class="pct num">${Math.floor(p * 100)}%</div><div class="pct-small">накоплено</div></div>`)}
-      <h2>${esc(g.name)}</h2><div class="big num">${money(g.balance)} из ${money(g.target)}</div></div>`;
+      <div class="big num" style="margin-top:14px;color:var(--text);font-size:24px;font-weight:700">${money(g.balance)}</div>
+      <div class="big num">из ${money(g.target)}</div></div>
+    <div class="seg" role="tablist">${tabs.map(([v, t]) => `<button role="tab" aria-selected="${v === S.tab}" data-act="tab" data-v="${v}" class="${v === S.tab ? "on" : ""}">${t}</button>`).join("")}</div>
+    ${S.tab === "plan" ? planTab(g) : S.tab === "history" ? historyTab(g) : overviewTab(g)}`;
+}
 
-  // Пополнение
-  const planPay = n > 0 ? needPayment(g.balance, g.target, n, r) : 0;
+// Одна фраза о том, как идут дела у цели
+function statusText(g) {
+  if (g.balance >= g.target) return `<span class="ok">Цель достигнута. Поздравляем!</span>`;
+  const n = paymentsLeft(g), left = g.target - g.balance;
+  if (n === -1) return `<span class="bad">Срок прошёл ${dLong(parseDate(g.deadline))}.</span> Осталось накопить ${money(left)}.`;
+  if (!n) {
+    const pace = monthlyPace(g);
+    return pace
+      ? `При вашем темпе около ${money(Math.round(pace / 100) * 100)} в месяц цель будет достигнута примерно в ${dInMonth(new Date(Date.now() + (left / pace) * 30.44 * DAY))}.`
+      : `Осталось накопить ${money(left)}. Добавьте срок, и копилка рассчитает план.`;
+  }
+  const pay = needPayment(g.balance, g.target, n, perRate(g)), st = planStatus(g), by = dLong(parseDate(g.deadline));
+  if (!pay) return `<span class="ok">Вносить больше не нужно:</span> проценты доведут сумму до цели к ${by}.`;
+  if (st && st.diff < -100) return `<span class="warn">Отстаёте от плана на ${money(-st.diff)}.</span> Чтобы успеть к ${by}, вносите ${money(pay)} ${PER[g.freq]}.`;
+  if (st && st.diff > 100) return `<span class="ok">Опережаете план на ${money(st.diff)}.</span> Достаточно вносить ${money(pay)} ${PER[g.freq]} до ${by}.`;
+  return `Вносите ${money(pay)} ${PER[g.freq]}, и к ${by} цель будет достигнута.`;
+}
+
+// Вкладка «Обзор»: пополнение, вывод, достижения
+function overviewTab(g) {
+  const n = paymentsLeft(g), done = g.balance >= g.target;
+  const planPay = n > 0 ? needPayment(g.balance, g.target, n, perRate(g)) : 0;
   const chips = [...new Set([planPay, 50000, 100000, 500000].filter(x => x > 0))].slice(0, 4);
-  h += `<div class="group"><input class="amount num" id="amt" inputmode="decimal" placeholder="0 ₽" aria-label="Сумма">
-    <div class="chips">${chips.map(c => `<button class="chip num" data-act="chip" data-v="${c / 100}">${c === planPay ? "План " : ""}${money(c)}</button>`).join("")}</div>
-    <div class="err" id="err"></div>
+  let h = `<div class="group"><input class="amount num" id="amt" inputmode="decimal" autocomplete="off" placeholder="0 ₽" aria-label="Сумма">
+    <div class="chips">${chips.map(c => `<button class="chip num" data-act="chip" data-v="${c / 100}">${c === planPay ? "По плану: " : ""}${money(c)}</button>`).join("")}</div>
+    <div class="err" id="err" role="alert"></div>
     <div class="btn-row" style="padding:0 12px 12px"><button class="btn tinted" data-act="wd">Снять</button><button class="btn primary" data-act="dep">Пополнить</button></div></div>`;
 
-  // План
-  if (g.balance >= g.target) {
-    h += `<div class="group"><div class="cell"><span class="ok">Цель достигнута. Поздравляем!</span></div></div>`;
-  } else if (n === -1) {
+  h += `<div class="group"><div class="cell insight">${statusText(g)}</div>
+    ${done ? "" : `<button class="cell link" data-act="${g.deadline ? "toPlan" : "edit"}">${g.deadline ? "Открыть план" : "Добавить срок"}</button>`}</div>`;
+
+  const got = ACH.filter(a => g.ach[a.id]).length, cs = curStreak(g), thisP = g.lastP === periodIdx(Date.now(), g.freq);
+  const where = g.freq === "week" ? "на этой неделе" : "в этом месяце";
+  const streakTxt = cs > 0
+    ? `🔥 ${cs} ${plural(cs, UNIT_NOM[g.freq])} подряд` + (thisP ? "" : `. Пополните ${where}, чтобы не прервать серию.`)
+    : `Пополняйте ${g.freq === "week" ? "каждую неделю" : "каждый месяц"}, чтобы начать серию.`;
+  h += `<div class="group-title">Достижения: ${got} из ${ACH.length}</div><div class="group">
+    <div class="badges">${ACH.map(a => `<div class="badge ${g.ach[a.id] ? "" : "off"}"><div class="e" aria-hidden="true">${a.e}</div><div class="t">${a.t(g)}</div></div>`).join("")}</div>
+    <div class="cell sub" style="margin:0">${streakTxt}</div>
+    ${g.best > 1 ? `<div class="cell"><span class="grow">Лучшая серия</span><span class="val num">${g.best} ${plural(g.best, UNIT_NOM[g.freq])}</span></div>` : ""}</div>`;
+  return h;
+}
+
+// Вкладка «План»: расчёт, график платежей, «Что если»
+function planTab(g) {
+  if (g.balance >= g.target) return `<div class="group"><div class="cell"><span class="ok">Цель достигнута, план выполнен.</span></div></div>`;
+  const left = g.target - g.balance, n = paymentsLeft(g), r = perRate(g);
+  const planPay = n > 0 ? needPayment(g.balance, g.target, n, r) : 0;
+  let h = "";
+  if (n === -1) {
     h += `<div class="group-title">План</div><div class="group">
       <div class="cell"><span class="grow">Срок</span><span class="val bad">${dLong(parseDate(g.deadline))}</span></div>
       <div class="cell"><span class="grow">Осталось накопить</span><span class="val num">${money(left)}</span></div>
@@ -684,58 +758,36 @@ function detailHTML(id) {
   } else if (n) {
     const rows = schedule(g), last = rows[rows.length - 1];
     const interest = r && last ? Math.max(0, last.bal - g.balance - planPay * n) : 0;
-    const st = planStatus(g);
-    let status = `<span class="ok">Вы идёте по плану</span>`;
-    if (st && st.diff < -100) status = `<span class="warn">Отстаёте от плана на ${money(-st.diff)}. Платёж пересчитан, чтобы вы успели к сроку.</span>`;
-    else if (st && st.diff > 100) status = `<span class="ok">Опережаете план на ${money(st.diff)}</span>`;
     h += `<div class="group-title">План</div><div class="group">
       <div class="cell"><span class="grow">${planPay ? "Вносить" : "Вносить больше не нужно"}</span><span class="val num" style="color:var(--text);font-weight:600">${planPay ? money(planPay) + " " + PER[g.freq] : ""}</span></div>
       <div class="cell"><span class="grow">Срок</span><span class="val">${dLong(parseDate(g.deadline))}</span></div>
       <div class="cell"><span class="grow">Осталось</span><span class="val num">${n} ${plural(n, PAY_WORDS)}</span></div>
       ${g.rate ? `<div class="cell"><span class="grow">Ставка</span><span class="val num">${String(g.rate).replace(".", ",")}% годовых</span></div>
-      <div class="cell"><span class="grow">Принесут проценты</span><span class="val num ok">+${money(interest)}</span></div>` : ""}
-      <div class="cell sub" style="margin:0">${status}</div></div>`;
+      <div class="cell"><span class="grow">Принесут проценты</span><span class="val num">+${money(interest)}</span></div>` : ""}</div>`;
     if (planPay) {
       const shown = S.showAll ? rows : rows.slice(0, 6);
       h += `<div class="group-title">График платежей</div><div class="group">` +
-        shown.map((x, i) => `<div class="cell"><span class="grow">${dLong(x.date)}</span>
+        shown.map(x => `<div class="cell"><span class="grow">${dLong(x.date)}</span>
           <span class="val num" style="line-height:1.25"><span style="color:var(--text)">+${money(x.pay)}</span><br><span style="font-size:13px">итого ${money(x.bal)}</span></span></div>`).join("") +
         (rows.length > 6 ? `<button class="cell link" data-act="all">${S.showAll ? "Свернуть" : `Показать все ${rows.length} ${plural(rows.length, PAY_WORDS)}`}</button>` : "") + `</div>`;
     }
   } else {
-    const pace = monthlyPace(g);
     h += `<div class="group-title">План</div><div class="group">
-      ${pace ? `<div class="cell insight">При вашем темпе около ${money(Math.round(pace / 100) * 100)} в месяц цель будет достигнута примерно в ${dInMonth(new Date(Date.now() + (left / pace) * 30.44 * DAY))}.</div>` : ""}
+      <div class="cell insight">У цели нет срока, поэтому графика платежей нет.</div>
       <button class="cell link" data-act="edit">Добавить срок и рассчитать план</button></div>`;
   }
+  h += `<div class="group-title">Что если</div><div class="group">
+    <label class="cell"><span class="grow">Вносить ${PER[g.freq]}</span><input class="right num" id="wi" inputmode="decimal" autocomplete="off" placeholder="${planPay ? planPay / 100 : 5000}" style="flex:none;width:110px"><span class="val">₽</span></label>
+    <div class="cell insight sub" id="wiOut" style="margin:0">Введите сумму, и копилка покажет, когда вы накопите.</div></div>`;
+  return h;
+}
 
-  // Что если
-  if (g.balance < g.target) {
-    h += `<div class="group-title">Что если</div><div class="group">
-      <div class="cell"><span class="grow">Вносить ${PER[g.freq]}</span><input class="right num" id="wi" inputmode="decimal" placeholder="${planPay ? planPay / 100 : 5000}" aria-label="Сумма платежа"><span class="val">₽</span></div>
-      <div class="cell insight sub" id="wiOut" style="margin:0">Введите сумму, и копилка покажет, когда вы накопите.</div></div>`;
-  }
-
-  // Достижения
-  const got = ACH.filter(a => g.ach[a.id]).length, cs = curStreak(g), thisP = g.lastP === periodIdx(Date.now(), g.freq);
-  const where = g.freq === "week" ? "на этой неделе" : "в этом месяце";
-  let streakTxt;
-  if (cs > 0) streakTxt = `🔥 ${cs} ${plural(cs, UNIT_NOM[g.freq])} подряд` + (thisP ? "" : `. Пополните ${where}, чтобы не прервать серию.`);
-  else streakTxt = `Пополняйте ${g.freq === "week" ? "каждую неделю" : "каждый месяц"}, чтобы начать серию.`;
-  h += `<div class="group-title">Достижения: ${got} из ${ACH.length}</div><div class="group">
-    <div class="badges">${ACH.map(a => `<div class="badge ${g.ach[a.id] ? "" : "off"}" title="${a.s}"><div class="e">${a.e}</div><div class="t">${a.t(g)}</div></div>`).join("")}</div>
-    <div class="cell sub" style="margin:0">${streakTxt}</div>
-    ${g.best > 1 ? `<div class="cell"><span class="grow">Лучшая серия</span><span class="val num">${g.best} ${plural(g.best, UNIT_NOM[g.freq])}</span></div>` : ""}</div>`;
-
-  // История
-  h += `<div class="group-title">История</div><div class="group">` + (g.ops.length
-    ? g.ops.slice().reverse().map(([a, t]) => `<div class="cell"><span class="grow sub" style="margin:0">${dTime(new Date(t))}</span>
-        <span class="num ${a > 0 ? "ok" : "bad"}">${a > 0 ? "+" : "−"}${money(Math.abs(a))}</span></div>`).join("")
-    : `<div class="cell sub" style="margin:0">Операций пока нет</div>`) + `</div>`;
+// Вкладка «История»
+function historyTab(g) {
+  if (!g.ops.length) return `<div class="group"><div class="cell sub" style="margin:0">Операций пока нет. Пополнить цель можно на вкладке «Обзор».</div></div>`;
+  let h = `<div class="group">` + g.ops.slice().reverse().map(([a, t]) => `<div class="cell"><span class="grow sub" style="margin:0">${dTime(new Date(t))}</span>
+      <span class="num ${a > 0 ? "ok" : "bad"}">${a > 0 ? "+" : "−"}${money(Math.abs(a))}</span></div>`).join("") + `</div>`;
   if (g.ops.length >= MAX_OPS) h += `<p class="group-foot">Показаны последние ${MAX_OPS} операций.</p>`;
-
-  h += `<div class="group"><button class="cell link" data-act="edit">Изменить цель</button></div>
-    <button class="btn danger" data-act="del">Удалить цель</button>`;
   return h;
 }
 
@@ -767,7 +819,8 @@ function formHTML() {
     </div>
     <p class="group-foot">Если деньги лежат на накопительном счёте или вкладе, укажите ставку — копилка учтёт проценты. Если нет, оставьте пустым.</p>
     <div class="group"><div class="preview" id="preview"></div></div>
-    <div class="err" id="ferr"></div>`;
+    <div class="err" id="ferr" role="alert"></div>
+    ${f.id ? `<button class="btn danger" data-act="del">Удалить цель</button>` : ""}`;
 }
 function formValues() {
   const f = S.form;
@@ -820,7 +873,7 @@ async function saveForm() {
   }
   haptic("success");
   if (f.id) { S.stack.pop(); showTop(true); }
-  else { S.stack = [{ kind: "detail", id }]; showTop(true); }
+  else { S.stack = []; push("detail", id); }   // новая цель всегда открывается на «Обзоре»
 }
 
 /* ----- Операции ----- */
@@ -837,15 +890,29 @@ async function operate(sign) {
   const fresh = checkAch(g);
   try { await saveGoal(id); }
   catch (e) { S.goals[id] = norm(JSON.parse(backup)); err.textContent = "Не удалось сохранить. Проверьте интернет."; return; }
+  S.undo = { id, before: backup };
   showTop(false);
   if (fresh.length) {
     const top = fresh[fresh.length - 1];   // показываем самое крупное новое достижение
     haptic("success");
     toast(top.e, top.t(g), fresh.length > 1 ? `и ещё ${fresh.length - 1}: загляните в «Достижения»` : top.s);
-  } else {
-    haptic("tap");
-    toast(sign > 0 ? "✓" : "−", sign > 0 ? "Пополнено" : "Снято", money(a));
-  }
+  } else haptic("tap");
+  snack(`${sign > 0 ? "Пополнено" : "Снято"}: ${money(a)}`, { act: "undo", label: "Отменить" });
+}
+
+// Возвращает цель в состояние до последней операции
+async function undoLast() {
+  const u = S.undo;
+  if (!u || !S.goals[u.id]) return;
+  const now = JSON.stringify(S.goals[u.id]);
+  S.goals[u.id] = norm(JSON.parse(u.before));
+  try { await saveGoal(u.id); }
+  catch (e) { S.goals[u.id] = norm(JSON.parse(now)); snack("Не удалось отменить. Проверьте интернет."); return; }
+  S.undo = null;
+  haptic("tap");
+  const top = S.stack[S.stack.length - 1];
+  if (top && top.kind === "detail") showTop(false); else renderMain();
+  snack("Операция отменена");
 }
 
 /* ================== Обработка нажатий ================== */
@@ -876,6 +943,9 @@ document.addEventListener("click", async e => {
     case "close": S.stack = []; showTop(); break;
     case "back": back(); break;
     case "edit": openForm(top.id); break;
+    case "tab": S.tab = t.dataset.v; haptic("tap"); showTop(false); break;
+    case "toPlan": S.tab = "plan"; showTop(true); break;
+    case "undo": hideSnack(); once(undoLast); break;
     case "chip": document.getElementById("amt").value = t.dataset.v; haptic("tap"); break;
     case "dep": once(() => operate(1)); break;
     case "wd": once(() => operate(-1)); break;
@@ -885,12 +955,14 @@ document.addEventListener("click", async e => {
     case "save": once(saveForm); break;
     case "retry": load(); break;
     case "del": once(async () => {
+      top.id = S.form.id;                 // удаляем из формы изменения: id берём у формы
       const g = S.goals[top.id];
       if (!(await confirmMsg(`Удалить цель «${g.name}» и всю её историю?`))) return;
       S.ids = S.ids.filter(x => x !== top.id);
       try { await saveIds(); }
       catch (er) { S.ids.push(top.id); alertMsg("Не удалось удалить. Проверьте интернет."); return; }
       delete S.goals[top.id];
+      if (S.undo && S.undo.id === top.id) S.undo = null;
       store.remove("g_" + top.id).catch(() => {});
       haptic("warning"); S.stack = []; showTop();
     }); break;
