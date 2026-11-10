@@ -39,8 +39,21 @@ button:focus-visible, input:focus-visible { outline:2px solid var(--accent); out
 .num { font-variant-numeric:tabular-nums; }
 
 .page { max-width:600px; margin:0 auto; padding:12px 16px calc(100px + env(safe-area-inset-bottom,0px)); }
-.large-title { font-size:34px; font-weight:700; letter-spacing:.01em; margin:8px 0 2px; }
+.large-title { font-size:34px; font-weight:700; letter-spacing:.01em; margin:8px 0 12px; }
 .hero-total { margin:0 0 4px; font-size:15px; color:var(--sec); }
+/* Шапка главного экрана: своя для каждой вкладки */
+.summary { margin:0 0 18px; min-height:96px; }
+.summary .cap { font-size:15px; color:var(--sec); }
+.summary .total { font-size:30px; font-weight:700; letter-spacing:-.02em; margin-top:1px; }
+.summary .hint { font-size:15px; color:var(--sec); margin-top:4px; }
+.bar { height:4px; border-radius:2px; background:var(--track); margin-top:12px; overflow:hidden; }
+.bar i { display:block; height:100%; border-radius:2px; background:var(--accent); transition:width .5s cubic-bezier(.2,.8,.2,1); }
+.bar i.full { background:var(--green); }
+@media (prefers-reduced-motion:reduce) { .bar i { transition:none; } }
+/* Серые заглушки, пока данные загружаются */
+.skeleton { border-radius:12px; background:var(--fill); margin-bottom:10px; animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.55; } }
+@media (prefers-reduced-motion:reduce) { .skeleton { animation:none; } }
 .hero-total b { display:block; color:var(--text); font-size:28px; font-weight:600; letter-spacing:-.01em; }
 .hero-hint { font-size:15px; color:var(--sec); margin:6px 0 16px; }
 
@@ -493,50 +506,70 @@ function goalLine(g) {
 }
 
 function renderMain() {
-  const app = document.getElementById("app"), G = S.goals;
-  if (S.status !== "ready") {
-    app.innerHTML = `<h1 class="large-title">Копилка</h1>` + (S.status === "loading"
-      ? `<div class="empty">Загружаю ваши цели…</div>`
-      : `<div class="empty"><div style="font-size:44px">📡</div><div class="name">Не удалось загрузить данные</div>
-          Проверьте интернет и попробуйте ещё раз. Ваши цели в безопасности: они хранятся в облаке Telegram.</div>
-          <button class="btn primary" data-act="retry">Повторить</button>`);
-    return;
-  }
-  const total = S.ids.reduce((s, id) => s + G[id].balance, 0);
-  let monthly = 0;
-  S.ids.forEach(id => {
-    const g = G[id], n = paymentsLeft(g);
-    if (n > 0 && g.balance < g.target) monthly += needPayment(g.balance, g.target, n, perRate(g)) * (g.freq === "week" ? 52 / 12 : 1);
-  });
-  let html = `<h1 class="large-title">Копилка</h1>
-    <p class="hero-total">Накоплено всего<b class="num">${money(total)}</b></p>
-    ${monthly ? `<p class="hero-hint">Чтобы успеть к срокам, откладывайте около ${money(Math.ceil(monthly / 100) * 100)} в месяц</p>` : `<div style="height:12px"></div>`}
-    <div class="seg" role="tablist">
-      <button data-act="view" data-v="goals" class="${S.view === "goals" ? "on" : ""}">Цели</button>
-      <button data-act="view" data-v="bills" class="${S.view === "bills" ? "on" : ""}">Траты</button>
-    </div>`;
-  if (S.view === "goals") {
-    if (!S.ids.length) {
-      html += `<div class="empty">${ring(88, 0, `<span style="font-size:34px">💰</span>`)}
-        <div class="name">Целей пока нет</div>
-        Укажите, на что копите, сколько нужно и к какому сроку. Копилка посчитает, сколько откладывать.</div>`;
-    } else {
-      html += `<div class="group">` + S.ids.map(id => {
-        const g = G[id];
-        return `<button class="cell goal-cell" data-act="open" data-id="${id}">
-          ${ring(48, pct(g), `<span style="font-size:20px">${g.emoji}</span>`)}
-          <div class="grow"><div class="name">${esc(g.name)}</div>
-            <div class="sub num">${money(g.balance)} из ${money(g.target)}</div>
-            <div class="sub">${goalLine(g)}</div></div>
-          ${curStreak(g) >= 2 ? `<span class="streak" aria-label="Серия ${curStreak(g)}">🔥${curStreak(g)}</span>` : ""}
-          <span class="chev">›</span></button>`;
-      }).join("") + `</div>`;
-    }
-    html += `<button class="btn primary fab" data-act="new">Новая цель</button>`;
+  const app = document.getElementById("app");
+  let html = `<h1 class="large-title">Копилка</h1>`;
+  if (S.status === "loading") {
+    html += `<div class="skeleton" style="height:84px"></div><div class="skeleton" style="height:32px"></div>
+      <div class="skeleton" style="height:76px"></div><div class="skeleton" style="height:76px"></div>`;
+  } else if (S.status === "error") {
+    html += `<div class="empty"><div style="font-size:44px">📡</div><div class="name">Не удалось загрузить данные</div>
+      Проверьте интернет и попробуйте ещё раз. Ваши цели в безопасности: они хранятся в облаке Telegram.</div>
+      <button class="btn primary" data-act="retry">Повторить</button>`;
   } else {
-    html += billsHTML();
+    html += (S.view === "goals" ? goalsSummary() : billsSummary())
+      + `<div class="seg" role="tablist">
+          <button role="tab" aria-selected="${S.view === "goals"}" data-act="view" data-v="goals" class="${S.view === "goals" ? "on" : ""}">Цели</button>
+          <button role="tab" aria-selected="${S.view === "bills"}" data-act="view" data-v="bills" class="${S.view === "bills" ? "on" : ""}">Траты</button></div>`
+      + (S.view === "goals" ? goalsHTML() : billsHTML());
   }
   app.innerHTML = html;
+}
+const progressBar = p => `<div class="bar" aria-hidden="true"><i class="${p >= 1 ? "full" : ""}" style="width:${Math.round(Math.min(p, 1) * 100)}%"></i></div>`;
+
+/* ----- Вкладка «Цели» ----- */
+// Шапка: сколько накоплено, сколько откладывать в месяц и общий прогресс по всем целям
+function goalsSummary() {
+  const gs = S.ids.map(id => S.goals[id]);
+  const total = gs.reduce((s, g) => s + g.balance, 0);
+  const target = gs.reduce((s, g) => s + g.target, 0);
+  const counted = gs.reduce((s, g) => s + Math.min(g.balance, g.target), 0);  // излишек сверх цели не раздувает общий прогресс
+  let monthly = 0;
+  gs.forEach(g => {
+    const n = paymentsLeft(g);
+    if (n > 0 && g.balance < g.target) monthly += needPayment(g.balance, g.target, n, perRate(g)) * (g.freq === "week" ? 52 / 12 : 1);
+  });
+  return `<section class="summary"><div class="cap">Накоплено</div><div class="total num">${money(total)}</div>
+    ${monthly ? `<div class="hint">Чтобы успеть к срокам, откладывайте около ${money(Math.ceil(monthly / 100) * 100)} в месяц</div>` : ""}
+    ${target ? progressBar(counted / target) : ""}</section>`;
+}
+function goalRow(id) {
+  const g = S.goals[id], cs = curStreak(g);
+  return `<button class="cell goal-cell" data-act="open" data-id="${id}">
+    ${ring(48, pct(g), `<span style="font-size:20px">${g.emoji}</span>`)}
+    <div class="grow"><div class="name">${esc(g.name)}</div>
+      <div class="sub num">${money(g.balance)} из ${money(g.target)}</div>
+      <div class="sub">${goalLine(g)}</div></div>
+    ${cs >= 2 ? `<span class="streak" aria-label="Серия ${cs}">🔥${cs}</span>` : ""}
+    <span class="chev" aria-hidden="true">›</span></button>`;
+}
+function goalsHTML() {
+  const fab = `<button class="btn primary fab" data-act="new">Новая цель</button>`;
+  if (!S.ids.length) {
+    return `<div class="empty">${ring(88, 0, `<span style="font-size:34px">💰</span>`)}
+      <div class="name">Целей пока нет</div>
+      Укажите, на что копите, сколько нужно и к какому сроку. Копилка посчитает, сколько откладывать.</div>${fab}`;
+  }
+  // Сначала цели с ближайшим сроком, потом без срока. Достигнутые — отдельным блоком внизу.
+  const done = id => S.goals[id].balance >= S.goals[id].target;
+  const active = S.ids.filter(id => !done(id)).sort((a, b) => {
+    const A = S.goals[a].deadline, B = S.goals[b].deadline;
+    if (A && B) return A < B ? -1 : A > B ? 1 : 0;
+    return A ? -1 : B ? 1 : 0;   // без срока — после целей со сроком, в порядке создания
+  });
+  const reached = S.ids.filter(done);
+  return (active.length ? `<div class="group">${active.map(goalRow).join("")}</div>` : "")
+    + (reached.length ? `<div class="group-title">Достигнуты</div><div class="group">${reached.map(goalRow).join("")}</div>` : "")
+    + fab;
 }
 
 /* ================== Обязательные траты ==================
@@ -575,28 +608,33 @@ function billRow(b) {
       <span class="amt num">${money(b.amount)}</span>
     </button></div>`;
 }
+// Шапка: сколько осталось оплатить в этом месяце
+function billsSummary() {
+  const list = BL.ids.map(id => BL.items[id]), month = monthName(today0());
+  if (!list.length) return `<section class="summary"><div class="cap">Обязательные траты</div><div class="total num">${money(0)}</div>
+    <div class="hint">Добавьте ежемесячные платежи, чтобы не забывать о них</div></section>`;
+  const total = list.reduce((s, b) => s + b.amount, 0);
+  const paid = list.filter(isPaid), paidSum = paid.reduce((s, b) => s + b.amount, 0);
+  return `<section class="summary">${paid.length < list.length
+      ? `<div class="cap">Осталось оплатить за ${month}</div><div class="total num">${money(total - paidSum)}</div>`
+      : `<div class="cap">Траты за ${month}</div><div class="total ok">Всё оплачено</div>`}
+    <div class="hint num">Оплачено ${paid.length} из ${list.length}, всего ${money(total)} в месяц</div>
+    ${progressBar(total ? paidSum / total : 0)}</section>`;
+}
 function billsHTML() {
   const list = BL.ids.map(id => BL.items[id]);
-  const month = monthName(today0());
   if (!list.length) {
     return `<div class="empty"><div style="font-size:44px">🧾</div>
       <div class="name">Обязательных трат пока нет</div>
       Добавьте аренду, связь, подписки и другие ежемесячные платежи. Отмечайте оплату, а 1-го числа список сбросится сам.</div>
       <button class="btn primary fab" data-act="newBill">Новая трата</button>`;
   }
-  const total = list.reduce((s, b) => s + b.amount, 0);
-  const paidSum = list.filter(isPaid).reduce((s, b) => s + b.amount, 0);
-  const byDay = (a, b) => a.day - b.day || a.name.localeCompare(b.name);
+  const byDay = (a, b) => a.day - b.day || a.name.localeCompare(b.name, "ru");
   const unpaid = list.filter(b => !isPaid(b)).sort(byDay), paid = list.filter(isPaid).sort(byDay);
-  let h = `<div class="group"><div class="sum-card">
-      ${ring(64, total ? paidSum / total : 0, `<span style="font-size:13px;font-weight:600" class="num">${paid.length}/${list.length}</span>`)}
-      <div class="grow">${unpaid.length
-        ? `<div class="sub" style="margin:0">Осталось оплатить за ${month}</div><div class="big num">${money(total - paidSum)}</div>`
-        : `<div class="big ok">Всё оплачено</div>`}
-        <div class="sub num">Всего в месяц ${money(total)}</div></div></div></div>`;
+  let h = "";
   if (unpaid.length) h += `<div class="group-title">К оплате</div><div class="group">${unpaid.map(billRow).join("")}</div>`;
   if (paid.length) h += `<div class="group-title">Оплачено в этом месяце</div><div class="group">${paid.map(billRow).join("")}</div>`;
-  h += `<p class="group-foot" style="margin-top:-16px">Нажмите на кружок, чтобы отметить оплату. Отметки сбрасываются 1-го числа каждого месяца.</p>
+  h += `<p class="group-foot" style="margin-top:-20px">Нажмите на кружок, чтобы отметить оплату. Отметки сбрасываются 1-го числа каждого месяца.</p>
     <button class="btn primary fab" data-act="newBill">Новая трата</button>`;
   return h;
 }
@@ -921,7 +959,7 @@ document.addEventListener("click", async e => {
   if (!t) return;
   const act = t.dataset.act, top = S.stack[S.stack.length - 1];
   switch (act) {
-    case "view": S.view = t.dataset.v; haptic("tap"); renderMain(); break;
+    case "view": S.view = t.dataset.v; haptic("tap"); renderMain(); window.scrollTo(0, 0); break;
     case "open": push("detail", t.dataset.id); break;
     case "new": openForm(null); break;
     case "newBill": openBillForm(null); break;
